@@ -8,7 +8,7 @@ $columns = [
 
 $boards = [
 	'gray' => [
-		'color' => '#444',
+		'color' => '#233c3f',
 		'map' => [
 			'gggyyyy G bbbOyyy',
 			'ogYgYyo o pBboogg',
@@ -41,6 +41,55 @@ $boards = [
 			'bppbbbo b boyyyyB',
 			'oyggboo g booYPpy',
 			'yyYgyyy g ggopppy',
+		],
+	],
+	'yellow' => [
+		'color' => '#ffcd00',
+		'text' => '#555',
+		'map' => [
+			'pggYyyy o ppgggbY',
+			'pgpppyy o ppggbbb',
+			'bPpbbGg g ggPbOBp',
+			'oooobbb B gYybppp',
+			'ybboopp p bbbPpoo',
+			'yyBggoO y yobyyyo',
+			'GyygGoo y Ooooygg',
+		],
+	],
+	'purple' => [
+		'color' => '#56368b',
+		'map' => [
+			'yyOooGb b byyppgg',
+			'obbbppp P pyYbpPo',
+			'oobbYpO o oBbbpbB',
+			'oGyyyyo g obbObbp',
+			'gggPyog g Yooooop',
+			'Bgpggog y gppyyyp',
+			'pppgbby y ggggGyy',
+		],
+	],
+	'orange' => [
+		'color' => '#e97252',
+		'map' => [
+			'OoYoppP g oPggggg',
+			'boooGpg g YppGbyy',
+			'ybbggpg y yyppbyO',
+			'yYbyyyy B byypooo',
+			'pygBbGy o bbbbobb',
+			'gggpbbb o ggOyyBb',
+			'gpppooo p poooPpp',
+		],
+	],
+	'blue' => [
+		'color' => '#46a8d5',
+		'map' => [
+			'ppggyyY g gppppoo',
+			'OppBbGy g gPgYpoo',
+			'bOobggg p oggggGy',
+			'bbooogp p ooooBby',
+			'gbbpppb B bbObyyG',
+			'ggYypbb y yybboyb',
+			'yyyyPoo o Pyybopp',
 		],
 	],
 ];

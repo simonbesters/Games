@@ -1,11 +1,12 @@
 :root {
 	--center-border: solid 3px #fff;
 	--color: #000;
+	--text: #fff;
 	--size: 30px;
 }
 body {
 	background-color: var(--color);
-	color: white;
+	color: var(--text);
 	font-family: sans-serif;
 }
 body.layout {
@@ -14,7 +15,7 @@ body.layout {
 	column-gap: 20px;
 	align-items: flex-start;
 }
-a {
+a, a:visited, a:link, a:active {
 	color: inherit;
 }
 th:not([align]) {
@@ -107,7 +108,7 @@ table.game {
 	height: 2.0em;
 }
 #status.hilite {
-	color: black;
+	color: fuchsia;
 	transition: color 200ms linear;
 }
 #status button {
@@ -232,7 +233,7 @@ body:not(.with-choosing) #next-turn .choosing {
 	background-color: #97c3e9;
 }
 [data-color="p"] {
-	background-color: #e49baf;
+	background-color: #ee7f9d;
 }
 [data-color="o"] {
 	background-color: orange;
@@ -245,9 +246,35 @@ table.players {
 .players td {
 	padding: 3px;
 }
-.players .me {
+.players .me .name {
 	color: lime;
 	font-weight: bold;
+}
+.players .kicked .name {
+	text-decoration: line-through;
+	font-style: italic;
+}
+.players tr:not(.kickable) .kick,
+.players tr.kicked .kick,
+.players tr:not(.turn) .turn {
+	display: none;
+}
+
+p.error {
+	color: red;
+	font-weight: bold;
+}
+
+#no-connection {
+	display: none;
+	background-color: red;
+	color: white;
+	padding: 5px;
+	text-align: center;
+	position: fixed;
+	bottom: 0;
+	left: 0;
+	right: 0;
 }
 
 @media (max-width: 495px) {

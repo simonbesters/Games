@@ -3,7 +3,7 @@
 class Model extends db_generic_model {}
 
 class Game extends Model {
-	use WithMultiplayerPassword;
+	use WithMultiplayerPassword, WithMultiplayerPlayers;
 
 	const MAX_JOKERS = 8;
 
@@ -119,7 +119,7 @@ class Game extends Model {
 	}
 
 	protected function get_is_deletable() {
-		return $this->round == 0 && count($this->players) < 3;
+		return $this->round == 0 || $this->changed_on < strtotime('-24 hours');
 	}
 
 	protected function get_free_dice() {
@@ -179,11 +179,28 @@ class Game extends Model {
 
 	protected function relate_players() {
 		$round = self::KICKED_ROUND;
-		return $this->to_many(Player::class, 'game_id')->order("(finished_round = $round) asc, id asc");
+		return $this->to_many(Player::class, 'game_id')->order("id asc");
 	}
 
 	protected function relate_num_players() {
 		return $this->to_count(Player::$_table, 'game_id');
+	}
+
+	public function addPlayer(string $name) : string {
+		$this->validateName($name);
+		$this->validateUniqueName($name);
+
+		return self::$_db->transaction(function() use ($name) {
+			$this->touch();
+			Player::insert([
+				'game_id' => $this->id,
+				'online' => time(),
+				'password' => $password = get_random(),
+				'name' => $name,
+				'finished_round' => $this->round,
+			]);
+			return $password;
+		});
 	}
 
 	static public function createNew(string $board, string $playerName, int $seeAll) : Player {
@@ -341,7 +358,7 @@ class Player extends Model {
 	}
 
 	protected function get_is_kickable() {
-		return !$this->is_kicked && $this->online_ago > Game::KICKABLE_AFTER;
+		return !$this->is_kicked && $this->online_ago > Game::KICKABLE_AFTER && count($this->game->active_players) > 2 && !$this->game->isColorComplete();
 	}
 
 	protected function get_is_kicked() {
@@ -350,6 +367,10 @@ class Player extends Model {
 
 	protected function get_online_ago() {
 		return time() - $this->online;
+	}
+
+	protected function get_online_ago_text() {
+		return $this->online_ago < 5 ? 'now' : get_time_ago($this->online_ago) . ' ago';
 	}
 
 	protected function get_can_choose() {
@@ -410,22 +431,32 @@ class KeerStatus {
 		return false;
 	}
 
-	public function toResponseArray() : array {
+	public function toResponseArray(string $userHash = '') : array {
+		$serverHash = $this->getHash();
+		// if ($userHash === $serverHash) {
+		// 	return ['status' => $serverHash];
+		// }
+
 		return [
-			'status' => $this->getHash(),
-			'interactive' => $this->isInteractive(),
+			'status' => $serverHash,
+			// 'time' => microtime(1),
+			'round' => (int) $this->game->round,
+			// 'interactive' => $this->isInteractive(),
+			'player_complete' => $this->game->isPlayerComplete(),
 			'message' => (string) $this,
 			'dice' => $this->game->dice_array,
 			'others_columns' => $this->player->getOthersColumns(),
 			'others_colors' => $this->player->getOthersColors(),
 			'players' => array_map(function(Player $plr) {
 				return [
-					'online' => get_time_ago($plr->online_ago),
+					'online' => $plr->online_ago_text,
 					'jokers_left' => Game::MAX_JOKERS - $plr->used_jokers,
 					'score' => (int) $plr->score,
 					'turn' => (int) $plr->is_turn,
+					'kickable' => (int) $plr->is_kickable,
+					'kicked' => (int) $plr->is_kicked,
 				];
-			}, array_column($this->game->active_players, null, 'id')),
+			}, array_column($this->game->players, null, 'id')),
 		];
 	}
 

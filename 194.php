@@ -20,9 +20,9 @@ $player = Player::get($_GET['player'] ?? null);
 function printPlayersTable(Game $game, ?Player $player) {
 	global $debug;
 	?>
-	<table class="players">
+	<table class="players" style="margin-top: 1em">
 		<tr>
-			<th>Name</th>
+			<th>Player</th>
 			<? if (is_local() || !$game->see_all || $game->isPlayerComplete()): ?>
 				<th>Score</th>
 			<? endif ?>
@@ -30,27 +30,29 @@ function printPlayersTable(Game $game, ?Player $player) {
 			<th></th>
 			<th align="right">Online</th>
 			<th></th>
-			<th></th>
 		</tr>
 		<? foreach ($game->players as $plr): ?>
-			<tr class="<? if ($plr->id == ($player->id ?? 0)): ?>me<? endif ?>">
-				<td><?= do_html($plr->name) ?></td>
+			<tr
+				id="plr-<?= $plr->id ?>"
+				class="
+					<? if ($plr->id == ($player->id ?? 0)): ?>me<? endif ?>
+					<?= $player && $plr->is_kickable ? 'kickable' : '' ?>
+					<?= $plr->is_kicked ? 'kicked' : '' ?>
+					<?= $plr->is_turn ? 'turn' : '' ?>
+				"
+			>
+				<td>
+					<span class="name"><?= do_html($plr->name) ?></span>
+					<span class="turn">&#127922;</span>
+				</td>
 				<? if (is_local() || !$game->see_all || $game->isPlayerComplete()): ?>
 					<td><span id="score-<?= $plr->id ?>"><?= $plr->score ?></span></td>
 				<? endif ?>
 				<td nowrap><span id="jokers-left-<?= $plr->id ?>"><?= Game::MAX_JOKERS - $plr->used_jokers ?></span> / <?= Game::MAX_JOKERS ?></td>
-				<td id="turn-<?= $plr->id ?>">
-					<? if ($plr->is_turn): ?>TURN<? endif ?>
-					<? if ($plr->is_kicked): ?>OUT<? endif ?>
-				</td>
-				<td align="right">
+				<td><button class="kick" data-kick="<?= $plr->id ?>">KICK</button></td>
+				<td align="right" nowrap>
 					<? if (!$plr->is_kicked): ?>
-						<span id="online-<?= $plr->id ?>"><?= get_time_ago($plr->online_ago) ?></span> ago
-					<? endif ?>
-				</td>
-				<td>
-					<? if (($player->is_leader ?? false) && $plr->is_kickable): ?>
-						<button data-kick="<?= $plr->id ?>">KICK</button>
+						<span id="online-<?= $plr->id ?>"><?= $plr->online_ago_text ?></span>
 					<? endif ?>
 				</td>
 				<td>
@@ -76,18 +78,13 @@ if (!$player) {
 
 	if ($game = Game::get($_GET['game'] ?? null)) {
 		if (isset($_POST['join'], $_POST['name']) && $game->is_joinable) {
-			$password = $db->transaction(function() use ($game) {
-				$game->touch();
-				Player::insert([
-					'game_id' => $game->id,
-					'online' => time(),
-					'password' => $password = get_random(),
-					'name' => $_POST['name'],
-					'finished_round' => $game->round,
-				]);
-				return $password;
-			});
-			return do_redirect("?player=$password");
+			try {
+				$password = $game->addPlayer($_POST['name']);
+				return do_redirect("?player=$password");
+			}
+			catch (MultiPlayerException $ex) {
+				return do_redirect("?game=$game->password&error=" . $ex->getCode());
+			}
 		}
 
 		?>
@@ -96,16 +93,18 @@ if (!$player) {
 		<style>body { font-family: sans-serif }</style>
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<link rel="stylesheet" href="<?= html_asset('keeropkeer.css') ?>" />
-		<body style="--color: <?= $boards[$game->board]['color'] ?>">
+		<body style="--color: <?= $boards[$game->board]['color'] ?>; --text: <?= $boards[$game->board]['text'] ?? '#fff' ?>">
 
 		<h1>Keer Op Keer MULTIPLAYER</h1>
+		<? if (!empty($_GET['error'])): ?>
+			<p class="error"><?= do_html((new MultiPlayerException($_GET['error']))->getMessage()) ?></p>
+		<? endif ?>
 		<h2>Join game <?= $game->id ?>?</h2>
 		<p>
 			In round <?= $game->round ?>.
 			Last change: <?= date('Y-m-d H:i', $game->changed_on) ?>.
 			<? if ($game->isPlayerComplete()): ?><b>COMPLETE!</b> See scores:<? endif ?>
 		</p>
-		<p>Current players:</p>
 		<? printPlayersTable($game, null) ?>
 		<? if ($game->is_joinable): ?>
 			<form method="post" action>
@@ -151,6 +150,7 @@ if (!$player) {
 		$ids = Player::getHistory();
 		$players = Player::finds($ids);
 		$games = Player::eager('game', $players);
+		usort($games, fn($a, $b) => $b->created_on - $a->created_on);
 	}
 	Game::eager('players', $games);
 	?>
@@ -165,7 +165,7 @@ if (!$player) {
 				<? else: ?>
 					round <?= $gm->round ?>
 					<? if ($gm->is_deletable): ?>
-						- <a href="?delete=<?= $gm->password ?>">delete</a>
+						- <a href="?delete=<?= $gm->password ?>" onclick="return confirm('DELETE GAME?')">delete</a>
 					<? endif ?>
 				<? endif ?>
 			</li>
@@ -183,7 +183,7 @@ Player::addHistory($player->id);
 if (isset($_GET['status'])) {
 	$status = $player->getStatus();
 	$player->touch();
-	return json_respond($status->toResponseArray());
+	return json_respond($status->toResponseArray($_GET['status']));
 }
 
 elseif (isset($_GET['roll'], $_POST['colors'], $_POST['numbers'])) {
@@ -196,8 +196,16 @@ elseif (isset($_GET['roll'], $_POST['colors'], $_POST['numbers'])) {
 				'round' => $player->game->round == 0 ? 1 : $player->game->round,
 			]);
 			$player->game->touch();
+
+			$player->clear();
+			$player->game->clear();
+// print_r($player->getStatus()->toResponseArray());
+// exit;
 		});
-		return json_respond(['reload' => 1]);
+		return json_respond([
+			'reload' => 0,
+			'status' => $player->getStatus()->toResponseArray(),
+		]);
 	}
 	return json_respond(['reload' => 2]);
 }
@@ -218,20 +226,20 @@ elseif (isset($_GET['endturn'], $_POST['state'], $_POST['score'], $_POST['color'
 				$player->game->disableDice($_POST['color'], $_POST['number']);
 			}
 
-			if ($ended = $player->game->maybeEndRound()) {
-				$player->clear();
-			}
+			$ended = $player->game->maybeEndRound();
 			$player->game->touch();
+
+			$player->clear();
+			$player->game->clear();
 // var_dump($ended, $player->is_turn);
 // print_r($player->getStatus()->toResponseArray());
 // print_r($db->queries);
 // exit;
 			return $ended;
 		});
-		$reload = $ended && $player->is_turn;
 		return json_respond([
-			'reload' => $reload,
-			'status' => $reload ? null : $player->getStatus()->toResponseArray(),
+			'reload' => 0,
+			'status' => $player->getStatus()->toResponseArray(),
 		]);
 	}
 	return json_respond(['reload' => 2]);
@@ -269,10 +277,10 @@ $status = $player->getStatus();
 <script src="<?= html_asset('keeropkeer.js') ?>"></script>
 </head>
 
-<body class="layout multi" style="--color: <?= $boards[$player->game->board]['color'] ?>">
+<body class="layout multi">
 
 <? if (is_local()): ?>
-	<div style="position: fixed; right: 5px; top: 5px; background: #000"><?= rand(10, 99) ?></div>
+	<div style="position: fixed; right: 5px; top: 5px; background: #000; color: #fff"><?= rand(10, 99) ?></div>
 <? endif ?>
 
 <table id="board" class="board game">
@@ -316,8 +324,12 @@ $status = $player->getStatus();
 		</p>
 	</div>
 
-	<p style="margin-bottom: 0">Players:</p>
 	<? printPlayersTable($player->game, $player) ?>
+
+	<? if (is_local()): ?>
+		<pre id="debug"></pre>
+	<? endif ?>
+
 	<p>Share <a href="<?= do_html($player->game->url) ?>"><?= do_html($player->game->url) ?></a> to invite players.</p>
 </div>
 
@@ -334,6 +346,8 @@ $status = $player->getStatus();
 		</div>
 	<? endif; endforeach ?>
 <? endif ?>
+
+<div id="no-connection">No connection?</div>
 
 <script>
 KeerOpKeer.JOKERS = <?= json_encode(Game::MAX_JOKERS) ?>;

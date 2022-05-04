@@ -1,5 +1,19 @@
 "use strict";
 
+r.extend(Array, {
+	chunk(length) {
+		const out = [];
+		for ( let i = 0; i < this.length; i += length ) {
+			out.push(this.slice(i, i + length));
+		}
+		return out;
+	},
+});
+
+r.extend(String, {
+	chunk: Array.prototype.chunk,
+});
+
 this.Element && r.extend(Element, {
 	idOrRnd: function() {
 		return this.id || this.attr('id', '_' + String(Math.random()).substr(2)).id;
@@ -90,6 +104,10 @@ class RgbColor {
 
 	isDark() {
 		return this.lightness() < RgbColor.DARK;
+	}
+
+	static isDark(color) {
+		return (new this(color)).isDark();
 	}
 
 	static parseColor(color) {

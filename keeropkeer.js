@@ -234,6 +234,10 @@ class KeerOpKeer extends GridGame {
 		return true;
 	}
 
+	clearFulls() {
+		$$('.full-column, .full-color').removeClass('other').removeClass('self');
+	}
+
 	evalFulls() {
 		const columns = this.evalFullColumns();
 		const colors = this.evalFullColors();
@@ -348,6 +352,7 @@ class KeerOpKeer extends GridGame {
 
 	printBoard(board) {
 		document.body.css('--color', board.color);
+		document.body.css('--text', board.text || '#fff');
 		$('meta[name="theme-color"]').prop('content', board.color);
 
 		const html = [];
@@ -422,7 +427,7 @@ class KeerOpKeer extends GridGame {
 
 class MultiKeerOpKeer extends KeerOpKeer {
 
-	static STATUS_REQUEST_MS = 1500;
+	static STATUS_REQUEST_MS = 1100;
 
 	reset() {
 		super.reset();
@@ -431,6 +436,10 @@ class MultiKeerOpKeer extends KeerOpKeer {
 		this.usedJokers = 0;
 		this.turnColor = null;
 		this.turnNumber = null;
+
+		this.lastConnection = null;
+		this.lastStatus = null;
+		this.ignoringStatusUpdate = false;
 	}
 
 	startGame(boardName, state, usedJokers, othersColumns, othersColors) {
@@ -459,12 +468,20 @@ class MultiKeerOpKeer extends KeerOpKeer {
 				setTimeout(poll, MultiKeerOpKeer.STATUS_REQUEST_MS);
 			}
 			else {
-				$.get(location.search + '&status=1').on('done', (e, rsp) => {
+				const $status = $('#status');
+				$.get(location.search + '&status=' + $status.data('hash')).on('done', (e, rsp) => {
 					setTimeout(poll, MultiKeerOpKeer.STATUS_REQUEST_MS);
 					lastPoll = Date.now();
 
-					if (!rsp || !rsp.status) {
-						console.warn(rsp);
+					if (!rsp) {
+						console.warn('Empty status response. No connection?');
+						this.warnNoConnection();
+						return;
+					}
+					this.resetNoConnection();
+
+					if (!rsp.status) {
+						console.warn('status rsp', rsp);
 						return;
 					}
 
@@ -472,18 +489,37 @@ class MultiKeerOpKeer extends KeerOpKeer {
 						this.updatePlayersFromStatus(rsp.players);
 					}
 
-					if (rsp.status !== $('#status').data('hash')) {
-						if (rsp.interactive) {
-							setTimeout(() => location.reload(), 100);
+					if (rsp.status !== $status.data('hash')) {
+						if (!this.ignoringStatusUpdate) {
+console.log('no reload, but update', rsp);
+							this.updateFromStatus(rsp);
 						}
 						else {
-							this.updateFromStatus(rsp);
+if ($('#debug')) $('#debug').append("ignoring this status update\n");
+							console.warn('ignoring this status update');
 						}
 					}
 				});
 			}
 		};
 		setTimeout(poll, MultiKeerOpKeer.STATUS_REQUEST_MS);
+	}
+
+	warnNoConnection() {
+		const sec = this.lastConnection ? Math.round((Date.now() - this.lastConnection) / 1000) : 0;
+		if (sec > 5) {
+			$('#no-connection').show();
+		}
+	}
+
+	resetNoConnection() {
+		this.lastConnection = Date.now();
+		$('#no-connection').hide();
+	}
+
+	ignoreStatusUpdate() {
+		this.ignoringStatusUpdate = true;
+		setTimeout(() => this.ignoringStatusUpdate = false, 100);
 	}
 
 	updatePlayersFromStatus(players) {
@@ -494,23 +530,47 @@ class MultiKeerOpKeer extends KeerOpKeer {
 			if (jokers) jokers.setText(plr.jokers_left);
 			const score = $(`#score-${id}`);
 			if (score) score.setText(plr.score);
-			const turn = $(`#turn-${id}`);
-			if (turn) turn.setText(plr.turn ?  'TURN' : '');
+			const tr = $(`tr#plr-${id}`);
+			if (tr) {
+				tr.toggleClass('turn', plr.turn);
+				tr.toggleClass('kickable', plr.kickable);
+				tr.toggleClass('kicked', plr.kicked);
+			}
+			else {
+				location.reload();
+			}
 		});
 	}
 
 	updateFromStatus(status) {
-console.log('no reload, but update', status);
 		$('#status').data('hash', status.status);
-		$('#status').setHTML(status.message);
-
-		$('#dice').setHTML('');
-		if (status.dice && status.dice.colors && status.dice.colors) {
-			this.importDice(status.dice);
+		if (this.hasChanged(status, 'message')) {
+			$('#status').setHTML(status.message);
 		}
 
-		this.importFullColumns(status.others_columns);
-		this.importFullColors(status.others_colors);
+		$('#stats-round').setText(status.round);
+
+		if (status.dice && status.dice.colors && status.dice.numbers) {
+			if (this.hasChanged(status, 'dice')) {
+				this.importDice(status.dice);
+			}
+		}
+		else {
+			$('#dice').setHTML('');
+		}
+
+		if (this.hasChanged(status, 'others_columns') || this.hasChanged(status, 'others_colors')) {
+			this.clearFulls();
+			this.importFullColumns(status.others_columns);
+			this.importFullColors(status.others_colors);
+			this.evalFulls();
+		}
+
+		this.lastStatus = status;
+	}
+
+	hasChanged(status, key) {
+		return !this.lastStatus || JSON.stringify(this.lastStatus[key]) != JSON.stringify(status[key]);
 	}
 
 	importDice(dice) {
@@ -559,8 +619,12 @@ console.log('no reload, but update', status);
 	handleRoll() {
 		this.roll($('#roll')).then(dice => {
 			$.post(location.search + '&roll=1', $.serialize(dice)).on('done', (e, rsp) => {
-				console.log(rsp);
-				if (rsp.reload) location.reload();
+console.log('roll rsp', rsp);
+				if (rsp.status) {
+					this.ignoreStatusUpdate();
+					this.updateFromStatus(rsp.status);
+				}
+				else location.reload();
 			});
 		});
 	}
@@ -587,15 +651,14 @@ console.log('no reload, but update', status);
 		const data = {state, score, color, number, fulls};
 
 		$.post(location.search + '&endturn=1', $.serialize(data)).on('done', (e, rsp) => {
-console.log(rsp);
+console.log('end turn rsp', rsp);
 			document.body.removeClass('with-choosing');
-			if (rsp.reload) {
-				location.reload();
-			}
-			else if (rsp.status) {
+			if (rsp.status) {
+				this.ignoreStatusUpdate();
 				this.updateFromStatus(rsp.status);
 				this.updatePlayersFromStatus(rsp.status.players);
 			}
+			else location.reload();
 		});
 	}
 
@@ -604,8 +667,8 @@ console.log(rsp);
 
 		const data = {pid};
 		$.post(location.search + '&kick=1', $.serialize(data)).on('done', (e, rsp) => {
-			console.log(rsp);
-			if (rsp.reload) location.reload();
+console.log('kick rsp', rsp);
+			location.reload();
 		});
 	}
 
@@ -613,10 +676,10 @@ console.log(rsp);
 		this.listenCellClick();
 		this.listenDice();
 
-		$$('#roll').on('click', e => {
+		$('#status').on('click', '#roll', e => {
 			this.handleRoll();
 		});
-		$$('#next-turn').on('click', e => {
+		$('#status').on('click', '#next-turn', e => {
 			this.handleEndTurn();
 		});
 
