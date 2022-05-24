@@ -152,6 +152,7 @@ class SoloProjectL extends Game {
 	static EASY_TARGETS = 15;
 	static HARD_TARGETS = 10;
 
+	static INTERACTIVE_WAIT = 350;
 	static MAX_IN_HAND = 4;
 	static MAX_ACTIONS = 3;
 
@@ -169,7 +170,7 @@ class SoloProjectL extends Game {
 	reset() {
 		super.reset();
 
-		this.waiting = false;
+		this.setWaiting(false);
 
 		this.deck = [];
 		this.grid = (new Array(9)).fill(null);
@@ -177,7 +178,7 @@ class SoloProjectL extends Game {
 		this.setMoves(1);
 		this.resetActions();
 
-		this.oppoCoins = 0;
+		this.oppoCoins = this.startOppoCoins = 0;
 		this.columnCoins = [];
 		this.oppoTargets = [];
 		this.playerTargets = [];
@@ -200,8 +201,9 @@ class SoloProjectL extends Game {
 		this.deck = this.createDeck();
 		this.fillGrid();
 		this.printGrid();
+		this.fillHand();
 
-		this.oppoCoins = SoloProjectL.START_OPPO_COINS;
+		this.oppoCoins = this.startOppoCoins = SoloProjectL.START_OPPO_COINS;
 		this.columnCoins = SoloProjectL.START_COLUMN_COINS;
 
 		this.printNums();
@@ -213,8 +215,7 @@ class SoloProjectL extends Game {
 				this.finishRound();
 			}
 		});
-		$('#start-master').on('click', e => {
-		});
+		$('#start-master').hide();
 		$('#take-stone').on('click', e => {
 			this.waiting || this.takeStone();
 		});
@@ -239,26 +240,40 @@ class SoloProjectL extends Game {
 		});
 
 		$('#targets').on('click', '.target', e => {
-			const fillable = e.target.closest(context);
-			if (!fillable) {
-				this.waiting || this.handleTargetClick(e.subject);
-			}
+			this.waiting || this.handleTargetClick(e.subject);
 		});
 
-		const alertScores = scores => {
-			alert(scores.join(' + ') + ' = ' + scores.reduce((T, s) => T + s, 0));
+		$('#oppo-coins').on('click', e => {
+			this.changeStartOppoCoins();
+		});
+
+		const alertScores = ([score, points]) => {
+			alert(points.join(' + ') + ' = ' + score);
 		};
 		$('#oppo-targets').on('click', e => {
-			const scores = this.oppoTargets.map(target => target.score);
-			alertScores(scores);
+			alertScores(this.getOppoScore());
 		});
 		$('#player-targets').on('click', e => {
-			const scores = this.playerTargets.map(table => parseInt(table.data('score')));
-			alertScores(scores);
+			alertScores(this.getPlayerScore());
 		});
 	}
 
 
+
+	getOppoScore() {
+		return this.aggrScores(this.oppoTargets.map(target => target.score));
+	}
+
+	getPlayerScore() {
+		return this.aggrScores(this.playerTargets.map(table => parseInt(table.data('score'))));
+	}
+
+	aggrScores(scores) {
+		return [
+			scores.reduce((T, s) => T + s, 0),
+			scores,
+		];
+	}
 
 	finishRound() {
 		this.setMoves(this.m_iMoves + 1);
@@ -269,47 +284,73 @@ class SoloProjectL extends Game {
 		if (emptyColumns.length == 0) {
 			this.columnCoins = this.columnCoins.map(coins => coins - 1);
 			this.printNums();
+			this.startWinCheck();
 			return;
 		}
 
 		const targets = this.getTargets().filter((target, i) => target && emptyColumns.includes(i % 3));
 		const target = targets.sort((a, b) => parseInt(b.data('score')) - parseInt(a.data('score')))[0];
-		if (!target) return;
+		if (!target) {
+			this.startWinCheck();
+			return;
+		}
 
-		const targetIndex = this.getTargetIndex(target);
+		target.parentNode.addClass('hilite');
 
-		this.oppoTargets.push(this.grid[targetIndex]);
-		this.grid[targetIndex] = null;
-		this.printGrid();
-
-		this.waiting = true;
 		setTimeout(() => {
-			const column = targetIndex % 3;
-			this.columnCoins[column] += this.oppoCoins;
-			this.oppoCoins = 0;
+			const targetIndex = this.getTargetIndex(target);
 
-			for ( let col = 0; col < 3; col++ ) {
-				if (col != column && this.columnCoins[col] > 0) {
-					this.columnCoins[column]++;
-					this.columnCoins[col]--;
-				}
-			}
-			this.printNums();
+			this.oppoTargets.push(this.grid[targetIndex]);
+			this.grid[targetIndex] = null;
+			this.printGrid();
 
+			this.setWaiting(true);
 			setTimeout(() => {
-				this.fillGrid();
-				this.printGrid();
+				const column = targetIndex % 3;
+				this.columnCoins[column] += this.oppoCoins;
+				this.oppoCoins = 0;
+
+				for ( let col = 0; col < 3; col++ ) {
+					if (col != column && this.columnCoins[col] > 0) {
+						this.columnCoins[column]++;
+						this.columnCoins[col]--;
+					}
+				}
 				this.printNums();
-				this.waiting = false;
-			}, 500);
-		}, 500);
+
+				setTimeout(() => {
+					this.fillGrid();
+					this.printGrid();
+					this.printNums();
+					this.setWaiting(false);
+
+					this.startWinCheck(1);
+				}, SoloProjectL.INTERACTIVE_WAIT);
+			}, SoloProjectL.INTERACTIVE_WAIT);
+		}, SoloProjectL.INTERACTIVE_WAIT);
+	}
+
+	changeStartOppoCoins() {
+		if (this.waiting || this.m_iMoves > 1 || this.actions > 0) return;
+		if (this.startOppoCoins < 3) return;
+
+		this.startOppoCoins -= 3;
+		this.oppoCoins = this.startOppoCoins;
+		this.printNums();
 	}
 
 	takeStone() {
+		if (this.actions >= SoloProjectL.MAX_ACTIONS) return;
+
 		const table = this.getStones()[0];
 		table.data('available', parseInt(table.data('available')) + 1);
 
 		this.useAction();
+	}
+
+	setWaiting(waiting) {
+		this.waiting = waiting;
+		$('.stones-wrapper').toggleClass('waiting', this.waiting);
 	}
 
 	resetActions() {
@@ -320,10 +361,24 @@ class SoloProjectL extends Game {
 	useAction() {
 		this.actions++;
 		$('#used-actions').setText(this.actions);
+		$('#finish-round').toggleClass('can-finish', this.actions > 0).toggleClass('must-finish', this.actions >= SoloProjectL.MAX_ACTIONS);
 	}
 
 	targetIsFull(table) {
 		return table.tBodies[0].querySelectorAll('.shape:not(.filled)').length == 0;
+	}
+
+	removeHandEmpties() {
+		$$('#hand .grid-cell:empty').invoke('remove');
+	}
+
+	fillHand() {
+		this.removeHandEmpties();
+
+		const add = SoloProjectL.MAX_IN_HAND - this.getHand().length;
+		for ( let i = 0; i < add; i++ ) {
+			$('#hand').append(document.el('div', {'class': 'grid-cell'}));
+		}
 	}
 
 	addToHand(i) {
@@ -333,14 +388,16 @@ class SoloProjectL extends Game {
 
 		this.useAction();
 
+		this.removeHandEmpties();
 		const html = `<div class="grid-cell">${this.createTargetHtml(target)}</div>`;
 		const div = document.createElement('div');
 		div.setHTML(html);
-		this.$grid.getElement('#hand').append(div.firstChild);
+		$('#hand').append(div.firstChild);
+		this.fillHand();
 
 		const column = i % 3;
 
-		this.waiting = true;
+		this.setWaiting(true);
 		setTimeout(() => {
 			var wait = 0;
 			if (this.columnCoins[column] > 0) {
@@ -354,9 +411,9 @@ class SoloProjectL extends Game {
 				this.fillGrid();
 				this.printGrid();
 				this.printNums();
-				this.waiting = false;
+				this.setWaiting(false);
 			}, wait);
-		}, 500);
+		}, SoloProjectL.INTERACTIVE_WAIT);
 	}
 
 	printNums() {
@@ -455,6 +512,10 @@ class SoloProjectL extends Game {
 		if (selected) selected.removeClass('selected');
 	}
 
+	getHand() {
+		return $$('#hand .target');
+	}
+
 
 
 	handleStoneLeftClick(table) {
@@ -521,7 +582,7 @@ class SoloProjectL extends Game {
 			this.useAction();
 
 			if (this.targetIsFull(table)) {
-				this.waiting = true;
+				this.setWaiting(true);
 				setTimeout(() => {
 					const usedStones = table.data('used').split(',');
 					usedStones[table.data('stone')] = parseInt(usedStones[table.data('stone')]) + 1;
@@ -537,21 +598,64 @@ class SoloProjectL extends Game {
 
 					this.playerTargets.push(table);
 					table.parentNode.remove();
+					this.fillHand();
 					this.printNums();
-					this.waiting = false;
-				}, 500);
+					this.setWaiting(false);
+				}, SoloProjectL.INTERACTIVE_WAIT);
 			}
 		}
 	}
 
 	handleTargetClick(table) {
 		if (this.actions >= SoloProjectL.MAX_ACTIONS) return;
-		if ($$('#hand > *').length >= SoloProjectL.MAX_IN_HAND) return;
+		if (this.getHand().length >= SoloProjectL.MAX_IN_HAND) return;
 
 		const i = this.getTargetIndex(table);
 		this.addToHand(i);
 
 		this.unselectStone();
+	}
+
+
+
+	getScore() {
+		const playerScore = this.getPlayerScore()[0];
+		return {
+			...super.getScore(),
+			level: this.startOppoCoins,
+			score: Math.round(100 * playerScore / (this.getOppoScore()[0] + playerScore)),
+		};
+	}
+
+	isReady() {
+		const a = this.getHand().length;
+		const b = this.getTargets().filter(Boolean).length;
+		return a == 0 && b == 0;
+	}
+
+	haveWon() {
+		return this.isReady() && this.getPlayerScore()[0] > this.getOppoScore()[0];
+	}
+
+	haveLost() {
+		return this.isReady() && this.getPlayerScore()[0] <= this.getOppoScore()[0];
+	}
+
+	getScoreText() {
+		return `\n\nYou: ${this.getPlayerScore()[0]} vs Computer: ${this.getOppoScore()[0]}`;
+	}
+
+	getWinText() {
+		return super.getWinText() + this.getScoreText();
+	}
+
+	getLoseText() {
+		return super.getLoseText() + this.getScoreText();
+	}
+
+	lose() {
+		super.lose();
+		this.maybeSaveScore();
 	}
 
 

@@ -344,6 +344,8 @@ class KeerOpKeer extends GridGame {
 			...numbers.map((n, i) => `<span class="number ${dis('number', i)}" data-number="${n}"></span>`),
 		];
 		$('#dice').setHTML(html.join(' '));
+
+		this.turnColor = this.turnNumber = null;
 	}
 
 	randInt(max) {
@@ -649,6 +651,8 @@ console.log('roll rsp', rsp);
 		const score = this.getNumericScore();
 
 		const data = {state, score, color, number, fulls};
+
+		this.turnColor = this.turnNumber = null;
 
 		$.post(location.search + '&endturn=1', $.serialize(data)).on('done', (e, rsp) => {
 console.log('end turn rsp', rsp);
