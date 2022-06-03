@@ -5,6 +5,7 @@ class Model extends db_generic_model {}
 class Game extends Model {
 	use WithMultiplayerPassword, WithMultiplayerPlayers;
 
+	const COLORS = ['g', 'y', 'b', 'p', 'o'];
 	const MAX_JOKERS = 8;
 
 	const COLORS_TO_COMPLETE = 2;
@@ -91,12 +92,7 @@ class Game extends Model {
 	}
 
 	public function isColorComplete() : bool {
-		foreach ($this->active_players as $player) {
-			if ($player->finished_round == self::COLOR_COMPLETE_ROUND) {
-				return true;
-			}
-		}
-		return false;
+		return $this->color_complete_player != null;
 	}
 
 	public function isPlayerComplete() : bool {
@@ -112,6 +108,20 @@ class Game extends Model {
 		$pids = array_column($this->active_players, 'id');
 		$i = array_search($this->turn_player_id, $pids);
 		return $i === false ? $pids[array_rand($pids)] : $pids[($i + 1) % count($pids)];
+	}
+
+	protected function get_color_complete_player() {
+		foreach ($this->active_players as $player) {
+			if ($player->finished_round == self::COLOR_COMPLETE_ROUND) {
+				return $player;
+			}
+		}
+		return null;
+	}
+
+	protected function get_map() {
+		[$columns, $boards] = require '191_levels.php';
+		return $boards[$this->board]['map'];
 	}
 
 	protected function get_is_joinable() {
@@ -288,7 +298,7 @@ class Player extends Model {
 					return new KeerStatus($this, "GAME OVER! Waiting for '" . $unready[0] . "'s last round.");
 				}
 				else {
-					return new KeerStatus($this, "GAME OVER! Waiting for players' last round.");
+					return new KeerStatus($this, "GAME OVER! Waiting for " . count($unready) . " players' last round.");
 				}
 			}
 		}
@@ -298,7 +308,7 @@ class Player extends Model {
 				return new KeerStatus($this, "Waiting for '" . $unready[0] . "' to finish turn...");
 			}
 			else {
-				return new KeerStatus($this, "Waiting for players to finish turn...");
+				return new KeerStatus($this, "Waiting for " . count($unready) . " players to finish turn...");
 			}
 		}
 	}
@@ -358,6 +368,30 @@ class Player extends Model {
 			];
 		}
 		return [];
+	}
+
+	protected function get_full_colors() {
+		$colors = array_count_values(str_split($this->board_state));
+		$fulls = [];
+		foreach ($colors as $color => $num) {
+			if (strtoupper($color) == $color && $num == 21) {
+				$fulls[] = strtolower($color);
+			}
+		}
+
+		return $fulls;
+	}
+
+	protected function get_board_state() {
+		$map = array_map(fn($line) => strtolower(str_replace(' ', '', $line)), $this->game->map);
+		$map = str_split(implode('', $map));
+		foreach (str_split($this->board) as $i => $done) {
+			if ($done === 'x') {
+				$map[$i] = strtoupper($map[$i]);
+			}
+		}
+
+		return implode('', $map);
 	}
 
 	protected function get_is_kickable() {
@@ -440,31 +474,51 @@ class KeerStatus {
 
 	public function toResponseArray(string $userHash = '') : array {
 		$serverHash = $this->getHash();
-		// if ($userHash === $serverHash) {
-		// 	return ['status' => $serverHash];
-		// }
+		$lean = $userHash === $serverHash;
 
-		return [
+		$players = [
+			'players' => array_map(function(Player $plr) use ($lean) {
+				$always = [
+					'id' => $plr->id,
+					'online' => $plr->online_ago_text,
+					'kickable' => (int) $plr->is_kickable,
+				];
+				if ($lean) return $always;
+				return $always + [
+					'jokers_left' => Game::MAX_JOKERS - $plr->used_jokers,
+					'score' => (int) $plr->score,
+					'turn' => (int) $plr->is_turn,
+					'kicked' => (int) $plr->is_kicked,
+					'board' => !$this->game->see_all ? null : $plr->board,
+					// 'colors' => $plr->full_colors,
+				];
+			}, array_values($this->game->players)),
+		];
+		$always = [
 			'status' => $serverHash,
+		];
+		if ($lean) {
+			return $always + $players;
+		}
+
+		$colors = array_combine(Game::COLORS, array_fill(0, 5, 0));
+		foreach ($this->game->players as $plr) {
+			foreach ($plr->full_colors as $color) {
+				$colors[$color]++;
+			}
+		}
+
+		return $always + [
 			// 'time' => microtime(1),
-			'round' => (int) $this->game->round,
 			// 'interactive' => $this->isInteractive(),
-			'player_complete' => $this->game->isPlayerComplete(),
+			// 'player_complete' => $this->game->isPlayerComplete(),
+			'round' => (int) $this->game->round,
 			'message' => (string) $this,
 			'dice' => $this->game->dice_array,
 			'others_columns' => $this->player->getOthersColumns(),
 			'others_colors' => $this->player->getOthersColors(),
-			'players' => array_map(function(Player $plr) {
-				return [
-					'online' => $plr->online_ago_text,
-					'jokers_left' => Game::MAX_JOKERS - $plr->used_jokers,
-					'score' => (int) $plr->score,
-					'turn' => (int) $plr->is_turn,
-					'kickable' => (int) $plr->is_kickable,
-					'kicked' => (int) $plr->is_kicked,
-				];
-			}, array_column($this->game->players, null, 'id')),
-		];
+			'full_colors' => $colors,
+		] + $players;
 	}
 
 	public function __toString() {

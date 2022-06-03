@@ -79,7 +79,7 @@ class KOKChallengeEnds extends KOKChallengeColumns {
 }
 
 class KOKChallengeSide extends KOKChallengeColumns {
-	constructor(columns, side) {
+	constructor(side) {
 		super(side ? [8, 9, 10, 11, 12, 13, 14] : [0, 1, 2, 3, 4, 5, 6]);
 		this.side = side;
 	}
@@ -298,7 +298,7 @@ class KeerOpKeer extends GridGame {
 			return T + parseInt(cell.dataset.score);
 		}, 0);
 		const jokers = KeerOpKeer.JOKERS - this.usedJokers;
-		const stars = this.m_objGrid.getElements('[data-color].star:not(.chosen)').length;
+		const stars = this.m_objGrid.getElements('[data-color].star:not(.chosen)').length * 2;
 
 		return cols + colors + jokers - stars;
 	}
@@ -326,8 +326,9 @@ class KeerOpKeer extends GridGame {
 					setTimeout(rollIter, 60);
 				}
 				else {
-					setTimeout(() => button.disabled = false, 1000);
 					this.selectUniques();
+					button.disabled = true;
+					setTimeout(() => button.disabled = false, 1000);
 					resolve({colors, numbers});
 				}
 			};
@@ -471,7 +472,8 @@ class MultiKeerOpKeer extends KeerOpKeer {
 			}
 			else {
 				const $status = $('#status');
-				$.get(location.search + '&status=' + $status.data('hash')).on('done', (e, rsp) => {
+				const hash = this.lastStatus ? $status.data('hash') : 'x';
+				$.get(location.search + '&status=' + hash).on('done', (e, rsp) => {
 					setTimeout(poll, MultiKeerOpKeer.STATUS_REQUEST_MS);
 					lastPoll = Date.now();
 
@@ -491,7 +493,7 @@ class MultiKeerOpKeer extends KeerOpKeer {
 						this.updatePlayersFromStatus(rsp.players);
 					}
 
-					if (rsp.status !== $status.data('hash')) {
+					if (rsp.status !== hash) {
 						if (!this.ignoringStatusUpdate) {
 console.log('no reload, but update', rsp);
 							this.updateFromStatus(rsp);
@@ -525,22 +527,25 @@ if ($('#debug')) $('#debug').append("ignoring this status update\n");
 	}
 
 	updatePlayersFromStatus(players) {
-		r.each(players, (plr, id) => {
+		players.forEach(plr => {
+			const id = plr.id;
 			const online = $(`#online-${id}`);
 			if (online) online.setText(plr.online);
 			const jokers = $(`#jokers-left-${id}`);
-			if (jokers) jokers.setText(plr.jokers_left);
+			if (jokers && plr.jokers_left != null) jokers.setText(plr.jokers_left);
 			const score = $(`#score-${id}`);
-			if (score) score.setText(plr.score);
+			if (score && plr.score != null) score.setText(plr.score);
 			const tr = $(`tr#plr-${id}`);
 			if (tr) {
-				tr.toggleClass('turn', plr.turn);
-				tr.toggleClass('kickable', plr.kickable);
-				tr.toggleClass('kicked', plr.kicked);
+				if (plr.turn != null) tr.toggleClass('turn', plr.turn);
+				if (plr.kickable != null) tr.toggleClass('kickable', plr.kickable);
+				if (plr.kicked != null) tr.toggleClass('kicked', plr.kicked);
 			}
 			else {
 				location.reload();
 			}
+			const table = $(`#board-${id} #grid`);
+			if (table && plr.board) this.importBoardState(plr.board, table);
 		});
 	}
 
@@ -550,7 +555,9 @@ if ($('#debug')) $('#debug').append("ignoring this status update\n");
 			$('#status').setHTML(status.message);
 		}
 
-		$('#stats-round').setText(status.round);
+		if (status.round != null) {
+			$('#stats-round').setText(status.round);
+		}
 
 		if (status.dice && status.dice.colors && status.dice.numbers) {
 			if (this.hasChanged(status, 'dice')) {
@@ -568,11 +575,18 @@ if ($('#debug')) $('#debug').append("ignoring this status update\n");
 			this.evalFulls();
 		}
 
+		if (status.full_colors) {
+			r.each(status.full_colors, (num, color) => {
+				const el = $(`#color-${color}-players`);
+				if (el) el.setText(num);
+			});
+		}
+
 		this.lastStatus = status;
 	}
 
 	hasChanged(status, key) {
-		return !this.lastStatus || JSON.stringify(this.lastStatus[key]) != JSON.stringify(status[key]);
+		return status[key] && (!this.lastStatus || JSON.stringify(this.lastStatus[key]) != JSON.stringify(status[key]));
 	}
 
 	importDice(dice) {
@@ -599,18 +613,17 @@ if ($('#debug')) $('#debug').append("ignoring this status update\n");
 	importOtherPlayersBoardState(emptyBoard) {
 		$$('.other-player-board').forEach(el => {
 			el.setHTML(emptyBoard);
+			el.getElement('tfoot').remove();
 			const grid = el.getElement('#grid');
-			this.importBoardState(JSON.parse(el.dataset.board), grid);
-			this.importFullColumns(JSON.parse(el.dataset.columns), grid);
-			this.evalFullColumns(grid);
+			// this.importBoardState(JSON.parse(el.dataset.board), grid);
+			// this.importFullColumns(JSON.parse(el.dataset.columns), grid);
+			// this.evalFullColumns(grid);
 		});
 	}
 
 	importBoardState(state, container) {
 		(container || this.m_objGrid).getElements('td').forEach((td, i) => {
-			if (state[i] === 'x') {
-				td.addClass('chosen');
-			}
+			td.toggleClass('chosen', state[i] === 'x');
 		});
 	}
 
@@ -681,10 +694,10 @@ console.log('kick rsp', rsp);
 		this.listenDice();
 
 		$('#status').on('click', '#roll', e => {
-			this.handleRoll();
+			if (e.subject.disabled === false) this.handleRoll();
 		});
 		$('#status').on('click', '#next-turn', e => {
-			this.handleEndTurn();
+			if (e.subject.disabled === false) this.handleEndTurn();
 		});
 
 		$$('[data-kick]').on('click', e => {
