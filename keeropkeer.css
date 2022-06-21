@@ -1,13 +1,18 @@
 :root {
-	--center-border: solid 3px #fff;
+    --size: calc(100vw / 15);
+    --square-size: 48px;
 	--color: #000;
 	--text: #fff;
-	--size: 30px;
+ 	--border-size: 2px;
+    --center-border: 3px;
+	--border-spacing: 1px;
 }
 body {
 	background-color: var(--color);
 	color: var(--text);
 	font-family: sans-serif;
+	font-size: 16px;
+	caret-color: transparent;
 }
 body.layout {
 	display: flex;
@@ -23,83 +28,112 @@ th:not([align]) {
 }
 
 table.game {
-	/*border-spacing: 0px;*/
-	border-collapse: collapse;
+    border-spacing: var(--border-spacing);
+    border-collapse: separate;
 }
 .game td {
-	width: var(--size);
-	height: var(--size);
+    width: var(--square-size);
+    height: var(--square-size);
+    text-align: center;
+    -moz-border-radius: calc(var(--square-size) / 5);
+    border-radius: calc(var(--square-size) / 5);
+    outline: var(--border-size) solid #282828;
+    outline-offset: -1px;
 	padding: 0;
-	border: solid 1px var(--color);
-	text-align: center;
 }
-.game tbody td:not(.transparent) {
-	color: black;
+
+.game tbody td {
+	color: #282828;
 }
+.game tbody td.transparent {
+	 color: white;
+	font-weight: bold;
+	outline: none;
+ }
 .game tbody .center {
-	border-left: var(--center-border);
-	border-right: var(--center-border);
+    outline: var(--center-border) solid white;
+    outline-offset: calc(var(--center-border) * -1);
 }
-.game thead .center,
-.game tbody tr:last-child .center {
-	border-bottom: var(--center-border);
+
+.game thead td, .game tfoot td {
+    background-color: white;
+    color: #282828;
+    font-weight: 1000;
+    font-size: calc(var(--square-size) / 2);
+    border: none;
+    outline: none;
+}
+
+.game thead .center, .game tfoot .center {
+    color: red;
+}
+
+[data-col="7"] {
+    color:red!important;
 }
 
 .game .star,
 .game .choosing,
 .game .chosen,
+.game .circle,
 .game .other,
 .game .self {
 	position: relative;
 }
 .game .star:before,
 .game .choosing:after,
-.game .chosen:after {
+.game .chosen:after,
+.game .circle:before {
 	display: block;
 	position: absolute;
-	line-height: 1;
 	text-align: center;
+    top: 0;
+    left: 0;
 }
 .game .star:before {
-	content: "\2606";
-	top: 1px;
-	left: 1px;
-	width: calc(var(--size) - 2px);
-	height: calc(var(--size) - 2px);
-	font-size: calc(var(--size) - 2px);
+	content: "\2605";
+	color: rgba(255, 255, 255, 0.7);
+	-webkit-text-stroke: 2px white;
+	top: -2px;
+	left: calc(var(--square-size) / 7);
+	font-size: calc(var(--square-size) - calc(var(--square-size) / 4));
 }
+
+.game .circle:before {
+    content: "\2B24";
+    color: rgba(255, 255, 255, 0.3);
+    left: calc(var(--square-size) / 12);
+    font-size: calc(var(--square-size) - calc(var(--square-size) / 4));
+}
+
 .game .choosing:after,
 .game .chosen:after {
-	content: "\274C";
-	top: 7px;
-	left: 7px;
-	width: calc(var(--size) - 14px);
-	height: calc(var(--size) - 14px);
-	font-size: calc(var(--size) - 14px);
+	content: "\2717";
+	top: -2px;
+	left: calc(var(--square-size) / 4);
+	font-size: calc(var(--square-size) - calc(var(--square-size) / 7));
 }
 .game .chosen:after {
-	font-weight: bold;
+    color: #000000b3;
 }
 .other:after {
 	content: "";
 	position: absolute;
-	top: 0px;
-	bottom: 0px;
+    top: 0;
+    bottom: 0;
 	left: calc(50% - 1px);
-	width: 2px;
-	background-color: currentColor;
+    width: 3px;
+    background-color: #282828;
 	transform: rotate(45deg);
 	transform-origin: center;
 }
 .self:after {
-	content: "";
+	content: "\25EF";
 	position: absolute;
-	top: 2px;
-	left: 2px;
-	width: calc(var(--size) - 8px);
-	height: calc(var(--size) - 8px);
-	border-radius: 30px;
-	border: solid 2px currentColor;
+	top: -3px;
+	left: 5px;
+	color: #282828;
+	font-size: calc(var(--square-size) * 0.8);
 }
 
 #status {
@@ -115,7 +149,7 @@ table.game {
 	padding: 8px 16px;
 }
 #challenge.hilite {
-	color: black;
+    color: #282828;
 	font-weight: bold;
 }
 .colors-stats {
@@ -127,6 +161,12 @@ table.game {
 	margin-right: 1em;
 	margin-bottom: 0;
 }
+
+.transparent td {
+	color: white;
+	font-weight: bold;
+}
+
 .dice-cont {
 	display: flex;
 }
@@ -144,21 +184,38 @@ table.game {
 	display: flex;
 }
 #dice > * {
-	width: 38px;
-	height: 38px;
-	border: solid 4px black;
-	font-weight: bold;
+    background-color: white;
+    width: var(--square-size);
+    height: var(--square-size);
+    border: none;
+    font-weight: 1000;
 	text-align: center;
-	font-size: 24px;
-	line-height: 30px;
+    font-size: calc(var(--square-size) / 2);
 	margin-right: 5px;
 	cursor: pointer;
+    padding: 0;
 	box-sizing: border-box;
+    -moz-border-radius: calc(var(--square-size) / 5);
+    border-radius: calc(var(--square-size) / 5);
 }
 #dice > .number {
-	background-color: white;
-	color: black;
+    background-color: #282828;
+    color: white;
 }
+
+#dice > .color:after {
+    content: "\271A";
+    display: inline-block;
+    -webkit-transform: rotate(45deg);
+    -moz-transform: rotate(45deg);
+    -o-transform: rotate(45deg);
+    transform: rotate(45deg);
+    position: relative;
+    top: 0;
+    left: 0;
+    font-size: calc(var(--square-size) - 5px);
+}
+
 #dice > .color + .number:not(.disabled),
 #dice > .color + .number.disabled + .number {
 	margin-left: 10px;
@@ -213,30 +270,62 @@ body:not(.with-choosing) #next-turn .choosing {
 
 [data-number]:after {
 	content: attr(data-number);
+    position: relative;
+    top: calc(var(--square-size) / 4);
 }
 [data-color="?"]:after,
 [data-number="0"]:after {
 	content: '?';
+    position: relative;
+    top: calc(var(--square-size) / 4);
 }
 [data-color="?"],
 #dice > [data-number="0"] {
-	background-color: black;
+    background-color: #282828;
 	color: white;
 }
 [data-color="g"] {
-	background-color: #6fe951;
+    background-color: #95c033;
 }
+
+#dice [data-color="g"]:after {
+    color: #95c033;
+}
+
 [data-color="y"] {
-	background-color: yellow;
+    background-color: #fcca01;
 }
+
+#dice [data-color="y"]:after {
+    color: #fcca01;
+}
+
 [data-color="b"] {
-	background-color: #97c3e9;
+    background-color: #3bb9e5;
 }
+
+#dice [data-color="b"]:after {
+    color: #3bb9e5;
+}
+
 [data-color="p"] {
-	background-color: #ee7f9d;
+    background-color: #df2048;
 }
+
+#dice [data-color="p"]:after {
+    color: #df2048;
+}
+
 [data-color="o"] {
-	background-color: orange;
+    background-color: #ef8119;
+}
+
+#dice [data-color="o"]:after {
+    color: #ef8119;
+}
+
+[data-color="?"]:after {
+    color: #282828;
 }
 
 table.players {
@@ -277,53 +366,27 @@ p.error {
 	right: 0;
 }
 
-@media (max-width: 495px) {
-	:root {
-		--size: 29px;
+.game .full-color {
+    color: #2828288a;
+    font-weight: 1000;
+    font-size: calc(var(--square-size) / 1.5);
+	}
+
+@media all and (max-width: 375px) {
+    .game td {
+        outline-offset: 0;
 	}
 }
-@media (max-width: 480px) {
+
+@media all and (max-width: 425px) {
 	:root {
-		--size: 28px;
-	}
+        --square-size: var(--size);
+        --border-size: 1px;
+        --center-border: 1px;
+        --border-spacing: 0px;
 }
-@media (max-width: 465px) {
-	:root {
-		--size: 27px;
-	}
+    body {
+        margin-left: 0;
+        margin-right: 0;
 }
-@media (max-width: 450px) {
-	:root {
-		--size: 26px;
 	}
-}
-@media (max-width: 435px) {
-	:root {
-		--size: 25px;
-	}
-}
-@media (max-width: 420px) {
-	:root {
-		--size: 24px;
-	}
-}
-@media (max-width: 405px) {
-	:root {
-		--size: 23px;
-	}
-}
-@media (max-width: 390px) {
-	:root {
-		--size: 22px;
-	}
-}
-@media (max-width: 375px) {
-	:root {
-		--size: 21px;
-	}
-}
-@media (max-width: 360px) {
-	:root {
-		--size: 20px;
-	}
-}
